@@ -653,7 +653,17 @@ class Gemma4Model(Gemma3Model):
         self.gguf_writer.add_add_bos_token(True)
 
     def set_gguf_parameters(self):
+        use_double_wide_mlp = self.hparams.get("use_double_wide_mlp", False)
+
+        # When use_double_wide_mlp=True, feed_forward_length must be a per-layer array.
+        # Hide intermediate_size temporarily so the base class doesn't write a scalar first,
+        # which would produce a duplicate-key warning when we overwrite it below.
+        _saved_ff = self.hparams.pop("intermediate_size", None) if use_double_wide_mlp else None
+
         super().set_gguf_parameters()
+
+        if _saved_ff is not None:
+            self.hparams["intermediate_size"] = _saved_ff
 
         num_kv_shared_layers = self.hparams["num_kv_shared_layers"]
         self.gguf_writer.add_shared_kv_layers(num_kv_shared_layers)
@@ -677,11 +687,9 @@ class Gemma4Model(Gemma3Model):
         if expert_intermediate_size is not None:
             self.gguf_writer.add_expert_feed_forward_length(expert_intermediate_size)
 
-        # if use_double_wide_mlp is set, we need to adjust the value for kv shared layers
-        use_double_wide_mlp = self.hparams.get("use_double_wide_mlp", False)
-        first_kv_shared_layer_idx = self.block_count - num_kv_shared_layers
         if use_double_wide_mlp:
             n_ff = self.hparams["intermediate_size"]
+            first_kv_shared_layer_idx = self.block_count - num_kv_shared_layers
             n_ff_arr = [n_ff if il < first_kv_shared_layer_idx else n_ff * 2 for il in range(self.block_count)]
             self.gguf_writer.add_feed_forward_length(n_ff_arr)
 

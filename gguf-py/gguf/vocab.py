@@ -563,6 +563,19 @@ class LlamaHfVocab(Vocab):
                 "You can install it with `pip install transformers`."
             ) from e
 
+        # Some model tokenizer configs (e.g. Gemma 4) store extra_special_tokens as a list
+        # instead of the dict format expected by transformers. Patch the method to handle both.
+        try:
+            from transformers.tokenization_utils_base import SpecialTokensMixin as _STM
+            _orig_ssm = _STM._set_model_specific_special_tokens
+            def _patched_ssm(self, special_tokens):  # type: ignore[misc]
+                if isinstance(special_tokens, list):
+                    special_tokens = {tok.strip("<|> "): tok for tok in special_tokens}
+                return _orig_ssm(self, special_tokens=special_tokens)
+            _STM._set_model_specific_special_tokens = _patched_ssm  # type: ignore[method-assign]
+        except (ImportError, AttributeError):
+            pass
+
         # Allow the tokenizer to default to slow or fast versions.
         # Explicitly set tokenizer to use local paths.
         self.tokenizer = AutoTokenizer.from_pretrained(
