@@ -1,7 +1,9 @@
 numpy~=1.26.4
 sentencepiece>=0.1.98,<0.3.0
 
-transformers==4.57.6
+# GLM-5.2 and other recent models require transformers 5.x; the TokenizersBackend class
+# referenced in their tokenizer_config.json does not exist in 4.x
+transformers>=5.0.0
 
 gguf>=0.1.0
 protobuf>=4.21.0,<5.0.0
