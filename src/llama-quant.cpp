@@ -847,7 +847,11 @@ static void init_quantize_state_counters(quantize_state_impl & qs, std::vector<t
             qs.has_tied_embeddings = false;
         }
     }
-    qs.n_ffn_down = qs.n_ffn_gate = qs.n_ffn_up = (int)qs.model.hparams.n_layer();
+    // Use n_layer_all, not n_layer(), because models with nextn/MTP blocks (e.g. GLM-5.2,
+    // BailingMoE2) store ffn_down/gate/up_exps tensors for those extra blocks in the GGUF
+    // file. The MoE path in layer_info() parses the block index from the tensor name, so
+    // those tensors would exceed the bounds set by n_layer() = n_layer_all - n_layer_nextn.
+    qs.n_ffn_down = qs.n_ffn_gate = qs.n_ffn_up = (int)qs.model.hparams.n_layer_all;
 }
 
 //
