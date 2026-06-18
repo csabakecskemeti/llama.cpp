@@ -219,8 +219,8 @@ llama_model_deepseek32::graph::graph(const llama_model & model, const llm_graph_
 
             ggml_tensor * top_k = nullptr;
 
-            // lightning indexer
-            {
+            // lightning indexer - skipped when tensors are absent (e.g. GLM-5.2 only has them on certain blocks)
+            if (model.layers[il].indexer_attn_q_b) {
                 ggml_tensor * indexer_q = ggml_mul_mat(ctx0, model.layers[il].indexer_attn_q_b, qr);
                 cb(indexer_q, "indexer_q", il);
 
