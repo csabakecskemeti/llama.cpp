@@ -1084,6 +1084,18 @@ class GGUFWriter:
     def add_kda_head_dim(self, value: int) -> None:
         self.add_uint32(Keys.KDA.HEAD_DIM.format(arch=self.arch), value)
 
+    def add_kda_gate_lower_bound(self, value: float) -> None:
+        self.add_float32(Keys.KDA.GATE_LOWER_BOUND.format(arch=self.arch), value)
+
+    def add_attn_res_block_size(self, value: int) -> None:
+        self.add_uint32(Keys.Attention.RES_BLOCK_SIZE.format(arch=self.arch), value)
+
+    def add_situ_beta(self, value: float) -> None:
+        self.add_float32(Keys.Situ.BETA.format(arch=self.arch), value)
+
+    def add_situ_linear_beta(self, value: float) -> None:
+        self.add_float32(Keys.Situ.LINEAR_BETA.format(arch=self.arch), value)
+
     def add_tokenizer_model(self, model: str) -> None:
         self.add_string(Keys.Tokenizer.MODEL, model)
 

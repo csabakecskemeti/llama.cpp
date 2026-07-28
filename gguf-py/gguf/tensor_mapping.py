@@ -611,10 +611,30 @@ class TensorNameMap:
 
         MODEL_TENSOR.MOE_LATENT_DOWN: (
             "backbone.layers.{bid}.mixer.fc1_latent_proj",                 # nemotron 3 super
+            "model.layers.{bid}.block_sparse_moe.routed_expert_down_proj", # Kimi K3
         ),
 
         MODEL_TENSOR.MOE_LATENT_UP: (
             "backbone.layers.{bid}.mixer.fc2_latent_proj",                 # nemotron 3 super
+            "model.layers.{bid}.block_sparse_moe.routed_expert_up_proj",   # Kimi K3
+        ),
+
+        MODEL_TENSOR.MOE_LATENT_NORM: (
+            "model.layers.{bid}.block_sparse_moe.routed_expert_norm",      # Kimi K3
+        ),
+
+        # Kimi K3 attention residuals. The RMSNorm weight is folded into the
+        # projection at conversion time, so only one tensor per site survives.
+        MODEL_TENSOR.ATTN_RES_W: (
+            "model.layers.{bid}.self_attention_res_proj",                  # Kimi K3
+        ),
+
+        MODEL_TENSOR.FFN_RES_W: (
+            "model.layers.{bid}.mlp_res_proj",                             # Kimi K3
+        ),
+
+        MODEL_TENSOR.OUTPUT_RES_W: (
+            "model.output_attn_res_proj",                                  # Kimi K3
         ),
 
         # Feed-forward down
@@ -915,6 +935,12 @@ class TensorNameMap:
         ),
         MODEL_TENSOR.SSM_G_B: (
             "model.layers.{bid}.self_attn.g_b_proj",
+        ),
+        # Kimi K3 full rank KDA output gate. MLA layers use the same HF name
+        # (self_attn.g_proj, already claimed by ATTN_GATE), so kimi_k3.py renames
+        # the KDA ones to this synthetic key before mapping.
+        MODEL_TENSOR.SSM_G: (
+            "model.layers.{bid}.self_attn.g_kda_proj",
         ),
         MODEL_TENSOR.TIME_MIX_W0: (
             "model.layers.{bid}.attention.w0",            # rwkv7

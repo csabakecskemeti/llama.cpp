@@ -534,6 +534,10 @@ class ModelBase:
                 elif nvfp4_compressed_tensors:
                     # Don't error from compressed-tensors, we'll handle them in _generate_nvfp4_tensors
                     pass
+                elif quant_format == "mxfp4-pack-quantized":
+                    # MXFP4 is byte-compatible with ggml MXFP4, so the model class repacks
+                    # it directly instead of dequantizing here (see kimi_k3.py, deepseek.py)
+                    pass
                 else:
                     raise NotImplementedError(f"Quant format {quant_format!r} for method {quant_method!r} is not yet supported")
             elif quant_method == "modelopt":
@@ -2633,7 +2637,7 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
     # Step3-VL keeps text config under text_config but uses a custom top-level architecture.
     # For text conversion we route to a dedicated text-only class.
     # TODO: refactor this later to avoid adding exception here
-    if model_type == ModelType.TEXT and arch in ("StepVLForConditionalGeneration", "Sarashina2VisionForCausalLM", "Exaone4_5_ForConditionalGeneration", "Step3p7ForConditionalGeneration"):
+    if model_type == ModelType.TEXT and arch in ("StepVLForConditionalGeneration", "Sarashina2VisionForCausalLM", "Exaone4_5_ForConditionalGeneration", "Step3p7ForConditionalGeneration", "KimiK3ForConditionalGeneration"):
         return arch
 
     # if "architectures" is found in the sub-config, use that instead

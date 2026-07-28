@@ -165,6 +165,7 @@ class Keys:
     class Attention:
         HEAD_COUNT                   = "{arch}.attention.head_count"
         HEAD_COUNT_KV                = "{arch}.attention.head_count_kv"
+        RES_BLOCK_SIZE               = "{arch}.attention.res_block_size"
         MAX_ALIBI_BIAS               = "{arch}.attention.max_alibi_bias"
         CLAMP_KQV                    = "{arch}.attention.clamp_kqv"
         KEY_LENGTH                   = "{arch}.attention.key_length"
@@ -243,7 +244,12 @@ class Keys:
         DT_B_C_RMS     = "{arch}.ssm.dt_b_c_rms"
 
     class KDA:
-        HEAD_DIM = "{arch}.kda.head_dim"
+        HEAD_DIM         = "{arch}.kda.head_dim"
+        GATE_LOWER_BOUND = "{arch}.kda.gate_lower_bound"
+
+    class Situ:
+        BETA        = "{arch}.situ.beta"
+        LINEAR_BETA = "{arch}.situ.linear_beta"
 
     class WKV:
         HEAD_SIZE = "{arch}.wkv.head_size"
@@ -551,6 +557,7 @@ class MODEL_ARCH(IntEnum):
     LLAMA_EMBED      = auto()
     MAINCODER        = auto()
     KIMI_LINEAR      = auto()
+    KIMI_K3          = auto()
     TALKIE           = auto()
     MELLUM           = auto()
     NANBEIGE         = auto()
@@ -626,6 +633,10 @@ class MODEL_TENSOR(IntEnum):
     FFN_GATE_TID2EID     = auto()
     MOE_LATENT_DOWN      = auto() # nemotron 3 super
     MOE_LATENT_UP        = auto() # nemotron 3 super
+    MOE_LATENT_NORM      = auto() # Kimi K3
+    ATTN_RES_W           = auto() # Kimi K3
+    FFN_RES_W            = auto() # Kimi K3
+    OUTPUT_RES_W         = auto() # Kimi K3
     ATTN_Q_NORM          = auto()
     ATTN_K_NORM          = auto()
     LAYER_OUT_NORM       = auto()
@@ -667,6 +678,7 @@ class MODEL_TENSOR(IntEnum):
     SSM_BETA             = auto() # Kimi Linear qwen3.5
     SSM_G_A              = auto() # Kimi Linear
     SSM_G_B              = auto() # Kimi Linear
+    SSM_G                = auto() # Kimi K3
     TIME_MIX_W0          = auto()
     TIME_MIX_W1          = auto()
     TIME_MIX_W2          = auto()
@@ -1155,6 +1167,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.LLAMA_EMBED:      "llama-embed",
     MODEL_ARCH.MAINCODER:        "maincoder",
     MODEL_ARCH.KIMI_LINEAR:      "kimi-linear",
+    MODEL_ARCH.KIMI_K3:          "kimi-k3",
     MODEL_ARCH.TALKIE:           "talkie",
     MODEL_ARCH.MELLUM:           "mellum",
     MODEL_ARCH.NANBEIGE:         "nanbeige",
@@ -1228,6 +1241,10 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.FFN_GATE_UP_EXP:           "blk.{bid}.ffn_gate_up_exps",
     MODEL_TENSOR.FFN_EXP_PROBS_B:           "blk.{bid}.exp_probs_b",
     MODEL_TENSOR.FFN_GATE_TID2EID:          "blk.{bid}.ffn_gate_tid2eid",
+    MODEL_TENSOR.MOE_LATENT_NORM:           "blk.{bid}.ffn_latent_norm",      # Kimi K3
+    MODEL_TENSOR.ATTN_RES_W:                "blk.{bid}.attn_res_w",           # Kimi K3
+    MODEL_TENSOR.FFN_RES_W:                 "blk.{bid}.ffn_res_w",            # Kimi K3
+    MODEL_TENSOR.OUTPUT_RES_W:              "output_res_w",                   # Kimi K3
     MODEL_TENSOR.MOE_LATENT_DOWN:           "blk.{bid}.ffn_latent_down",      # nemotron 3 super
     MODEL_TENSOR.MOE_LATENT_UP:             "blk.{bid}.ffn_latent_up",        # nemotron 3 super
     MODEL_TENSOR.LAYER_OUT_NORM:            "blk.{bid}.layer_output_norm",
@@ -1269,6 +1286,7 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.SSM_BETA:                  "blk.{bid}.ssm_beta",             # Kimi Linear qwen3.5
     MODEL_TENSOR.SSM_G_A:                   "blk.{bid}.ssm_g_a",              # Kimi Linear
     MODEL_TENSOR.SSM_G_B:                   "blk.{bid}.ssm_g_b",              # Kimi Linear
+    MODEL_TENSOR.SSM_G:                     "blk.{bid}.ssm_g",                # Kimi K3
     MODEL_TENSOR.TIME_MIX_W0:               "blk.{bid}.time_mix_w0",
     MODEL_TENSOR.TIME_MIX_W1:               "blk.{bid}.time_mix_w1",
     MODEL_TENSOR.TIME_MIX_W2:               "blk.{bid}.time_mix_w2",
@@ -4520,6 +4538,53 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.SSM_A,
         MODEL_TENSOR.SSM_G_A,
         MODEL_TENSOR.SSM_G_B,
+        MODEL_TENSOR.SSM_DT,
+        MODEL_TENSOR.SSM_NORM,
+        MODEL_TENSOR.FFN_EXP_PROBS_B,
+        MODEL_TENSOR.FFN_GATE_SHEXP,
+        MODEL_TENSOR.FFN_DOWN_SHEXP,
+        MODEL_TENSOR.FFN_UP_SHEXP,
+    ],
+    MODEL_ARCH.KIMI_K3: [
+        MODEL_TENSOR.TOKEN_EMBD,
+        MODEL_TENSOR.OUTPUT_NORM,
+        MODEL_TENSOR.OUTPUT,
+        MODEL_TENSOR.OUTPUT_RES_W,
+        MODEL_TENSOR.ATTN_NORM,
+        MODEL_TENSOR.ATTN_Q,
+        MODEL_TENSOR.ATTN_K,
+        MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.ATTN_OUT,
+        MODEL_TENSOR.ATTN_GATE,
+        MODEL_TENSOR.ATTN_Q_A,
+        MODEL_TENSOR.ATTN_Q_B,
+        MODEL_TENSOR.ATTN_KV_A_MQA,
+        MODEL_TENSOR.ATTN_KV_B,
+        MODEL_TENSOR.ATTN_K_B,
+        MODEL_TENSOR.ATTN_V_B,
+        MODEL_TENSOR.ATTN_Q_A_NORM,
+        MODEL_TENSOR.ATTN_KV_A_NORM,
+        MODEL_TENSOR.ATTN_RES_W,
+        MODEL_TENSOR.FFN_RES_W,
+        MODEL_TENSOR.FFN_NORM,
+        MODEL_TENSOR.FFN_GATE,
+        MODEL_TENSOR.FFN_DOWN,
+        MODEL_TENSOR.FFN_UP,
+        MODEL_TENSOR.FFN_GATE_INP,
+        MODEL_TENSOR.FFN_GATE_EXP,
+        MODEL_TENSOR.FFN_DOWN_EXP,
+        MODEL_TENSOR.FFN_UP_EXP,
+        MODEL_TENSOR.MOE_LATENT_DOWN,
+        MODEL_TENSOR.MOE_LATENT_UP,
+        MODEL_TENSOR.MOE_LATENT_NORM,
+        MODEL_TENSOR.SSM_CONV1D_Q,
+        MODEL_TENSOR.SSM_CONV1D_K,
+        MODEL_TENSOR.SSM_CONV1D_V,
+        MODEL_TENSOR.SSM_F_A,
+        MODEL_TENSOR.SSM_F_B,
+        MODEL_TENSOR.SSM_BETA,
+        MODEL_TENSOR.SSM_A,
+        MODEL_TENSOR.SSM_G,
         MODEL_TENSOR.SSM_DT,
         MODEL_TENSOR.SSM_NORM,
         MODEL_TENSOR.FFN_EXP_PROBS_B,
