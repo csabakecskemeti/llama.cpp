@@ -507,7 +507,13 @@ struct llama_layer {
     struct ggml_tensor * ssm_beta   = nullptr;
     struct ggml_tensor * ssm_g_a    = nullptr;
     struct ggml_tensor * ssm_g_b    = nullptr;
+    struct ggml_tensor * ssm_g      = nullptr; // kimi k3 full rank output gate
     struct ggml_tensor * ssm_o_norm = nullptr;
+
+    // kimi k3
+    struct ggml_tensor * ffn_latent_norm = nullptr;
+    struct ggml_tensor * attn_res_w      = nullptr;
+    struct ggml_tensor * ffn_res_w       = nullptr;
 
     // DSA (deepseek sparse attention)
     struct ggml_tensor * indexer_k_norm   = nullptr;
@@ -570,6 +576,7 @@ struct llama_model {
     struct ggml_tensor * output          = nullptr;
     struct ggml_tensor * output_b        = nullptr;
     struct ggml_tensor * output_norm_enc = nullptr;
+    struct ggml_tensor * output_res_w    = nullptr; // kimi k3 attention residuals
 
 
     // NVFP4 per-tensor scale2, input_scale for LM head

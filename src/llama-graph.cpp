@@ -1561,6 +1561,22 @@ llm_graph_qkv llm_graph_context::build_qkv(
 }
 
 
+// kimi k3 SiTU-GLU: (beta * tanh(gate/beta) * sigmoid(gate)) * (linear_beta * tanh(up/linear_beta))
+// both branches are soft clipping, which is what lets the model train stably at MXFP4.
+// linear_beta <= 0 leaves the up branch untouched.
+static ggml_tensor * build_situ_split(ggml_context * ctx0, ggml_tensor * gate, ggml_tensor * up, float beta, float linear_beta) {
+    GGML_ASSERT(beta > 0.0f);
+
+    ggml_tensor * g = ggml_scale(ctx0, ggml_tanh(ctx0, ggml_scale(ctx0, gate, 1.0f/beta)), beta);
+    g = ggml_mul(ctx0, g, ggml_sigmoid(ctx0, gate));
+
+    if (linear_beta > 0.0f) {
+        up = ggml_scale(ctx0, ggml_tanh(ctx0, ggml_scale(ctx0, up, 1.0f/linear_beta)), linear_beta);
+    }
+
+    return ggml_mul(ctx0, g, up);
+}
+
 ggml_tensor * llm_graph_context::build_ffn(
          ggml_tensor * cur,
          ggml_tensor * up,
@@ -1729,6 +1745,14 @@ ggml_tensor * llm_graph_context::build_ffn(
             {
                 cur = ggml_reglu(ctx0, cur);
                 cb(cur, "ffn_reglu", il);
+            } break;
+        case LLM_FFN_SITU:
+            if (gate && type_gate == LLM_FFN_PAR) {
+                cur = build_situ_split(ctx0, cur, tmp, hparams.f_situ_beta, hparams.f_situ_linear_beta);
+                cb(cur, "ffn_situ", il);
+                type_gate = LLM_FFN_SEQ;
+            } else {
+                GGML_ABORT("LLM_FFN_SITU requires a parallel gate");
             } break;
         default:
             GGML_ABORT("fatal error");
@@ -2084,6 +2108,13 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
                 constexpr float limit = 7.0f;
                 cur = ggml_swiglu_oai(ctx0, cur, up, alpha, limit);
                 cb(cur, "ffn_moe_swiglu_oai", il);
+            } break;
+        case LLM_FFN_SITU:
+            if (has_gate) {
+                cur = build_situ_split(ctx0, cur, up, hparams.f_situ_beta, hparams.f_situ_linear_beta);
+                cb(cur, "ffn_moe_situ", il);
+            } else {
+                GGML_ABORT("LLM_FFN_SITU requires a gate");
             } break;
         case LLM_FFN_RELU:
             if (has_gate) {

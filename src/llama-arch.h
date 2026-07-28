@@ -143,6 +143,7 @@ enum llm_arch {
     LLM_ARCH_LLAMA_EMBED,
     LLM_ARCH_MAINCODER,
     LLM_ARCH_KIMI_LINEAR,
+    LLM_ARCH_KIMI_K3,
     LLM_ARCH_TALKIE,
     LLM_ARCH_MELLUM,
     LLM_ARCH_EAGLE3,
@@ -308,6 +309,11 @@ enum llm_kv {
     LLM_KV_SSM_DT_B_C_RMS,
 
     LLM_KV_KDA_HEAD_DIM,
+    LLM_KV_KDA_GATE_LOWER_BOUND,
+
+    LLM_KV_ATTN_RES_BLOCK_SIZE,
+    LLM_KV_SITU_BETA,
+    LLM_KV_SITU_LINEAR_BETA,
 
     LLM_KV_WKV_HEAD_SIZE,
 
@@ -436,6 +442,11 @@ enum llm_tensor {
     LLM_TENSOR_FFN_EXP_PROBS_B,
     LLM_TENSOR_FFN_LATENT_DOWN,
     LLM_TENSOR_FFN_LATENT_UP,
+    LLM_TENSOR_FFN_LATENT_NORM,     // kimi k3: RMSNorm on the routed expert latent
+    // kimi k3 attention residuals: norm weight and proj weight are fused at conversion time
+    LLM_TENSOR_ATTN_RES_W,
+    LLM_TENSOR_FFN_RES_W,
+    LLM_TENSOR_OUTPUT_RES_W,
     LLM_TENSOR_ATTN_Q_NORM,
     LLM_TENSOR_ATTN_K_NORM,
     LLM_TENSOR_LAYER_OUT_NORM,
@@ -481,6 +492,7 @@ enum llm_tensor {
     LLM_TENSOR_SSM_BETA,            // kimi: beta mixing coefficient and qwen3.5
     LLM_TENSOR_SSM_G_A,             // kimi: output gate projection A
     LLM_TENSOR_SSM_G_B,             // kimi: output gate projection B
+    LLM_TENSOR_SSM_G,               // kimi k3: full rank output gate projection
     LLM_TENSOR_TIME_MIX_W0,
     LLM_TENSOR_TIME_MIX_W1,
     LLM_TENSOR_TIME_MIX_W2,
