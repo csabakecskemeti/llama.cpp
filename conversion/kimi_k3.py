@@ -86,8 +86,14 @@ class KimiK3Model(KimiLinearModel):
         nibble order differs: safetensors packs adjacent values as low/high nibbles,
         ggml puts values 0..15 in low nibbles and 16..31 in high nibbles.
         """
-        packed = weight.contiguous().view(torch.uint8)
-        scale_u8 = scale.contiguous().view(torch.uint8)
+        # prepare_tensors() upcasts anything that is not f16/f32 to float32, so the
+        # packed bytes arrive as floats. Values are 0..255 and survive that exactly,
+        # so cast them back rather than reinterpreting the wider storage.
+        packed = weight.contiguous()
+        packed = packed if packed.dtype == torch.uint8 else packed.to(torch.uint8)
+
+        scale_u8 = scale.contiguous()
+        scale_u8 = scale_u8 if scale_u8.dtype == torch.uint8 else scale_u8.to(torch.uint8)
 
         out_features, packed_cols = packed.shape
         logical_cols = packed_cols * 2
