@@ -10,7 +10,7 @@ import torch
 if TYPE_CHECKING:
     from torch import Tensor
 
-from .base import MmprojModel, ModelBase, TextModel, gguf
+from .base import MmprojModel, ModelBase, TextModel, gguf, logger
 from .qwenvl import Qwen2VLVisionModel
 
 
@@ -134,7 +134,54 @@ class ExaoneMoEModel(Exaone4Model):
         self.block_count = self.hparams["num_hidden_layers"] + self.hparams.get("num_nextn_predict_layers", 0)
         self.tensor_map = gguf.get_tensor_name_map(self.model_arch, self.block_count)
 
+    def _resolve_sliding_window(self):
+        # ExaoneMoeConfig declares `sliding_window: int = 4096`, so transformers hands us that
+        # default even for checkpoints that never set it (K-EXAONE 2.0). The per-layer
+        # `sliding_windows` array is the authoritative source when present - rewrite the scalar
+        # from it so the base class emits the right window and per-layer pattern.
+        windows = self.hparams.get("sliding_windows")
+        if not windows:
+            return
+
+        local = [w for w in windows if w]
+        if not local:
+            # every layer is global - let the base class skip the SWA keys entirely
+            self.hparams["sliding_window"] = None
+            return
+
+        # llama.cpp supports a single window size model-wide, so pick the dominant one
+        n_swa = max(set(local), key=local.count)
+        self.hparams["sliding_window"] = n_swa
+
+        odd = sorted({w for w in local if w != n_swa})
+        if odd:
+            logger.warning(
+                "sliding window size is not uniform: using %d for every SWA layer, but layer(s) %s "
+                "declare %s. Those layers will attend over %d tokens instead.",
+                n_swa, [i for i, w in enumerate(windows) if w in odd], odd, n_swa,
+            )
+
+    def _resolve_leading_dense_block_count(self) -> int:
+        # transformers documents mlp_layer_types as "Prioritized over first_k_dense_replace",
+        # and K-EXAONE 2.0 only declares the former (while transformers still supplies a
+        # first_k_dense_replace default of 1, which is wrong for it).
+        mlp_layer_types = self.hparams.get("mlp_layer_types")
+        if not mlp_layer_types:
+            return self.hparams.get("first_k_dense_replace", self.hparams.get("first_last_k_dense_replace", 0))
+
+        n_dense_layer = 0
+        while n_dense_layer < len(mlp_layer_types) and mlp_layer_types[n_dense_layer] == "dense":
+            n_dense_layer += 1
+
+        if "dense" in mlp_layer_types[n_dense_layer:]:
+            raise ValueError(
+                f"only leading dense layers are supported, got mlp_layer_types={mlp_layer_types}")
+
+        return n_dense_layer
+
     def set_gguf_parameters(self):
+        self._resolve_sliding_window()
+
         super().set_gguf_parameters()
         moe_intermediate_size = self.hparams["moe_intermediate_size"]
         num_shared_experts = self.hparams["num_shared_experts"]
@@ -143,9 +190,16 @@ class ExaoneMoEModel(Exaone4Model):
         self.gguf_writer.add_expert_shared_feed_forward_length(moe_intermediate_size * num_shared_experts)
         self.gguf_writer.add_expert_weights_scale(self.hparams["routed_scaling_factor"])
         self.gguf_writer.add_expert_weights_norm(self.hparams["norm_topk_prob"])
-        n_dense_layer = self.hparams.get("first_k_dense_replace", self.hparams.get("first_last_k_dense_replace", 0))
-        self.gguf_writer.add_leading_dense_block_count(n_dense_layer)
+        self.gguf_writer.add_leading_dense_block_count(self._resolve_leading_dense_block_count())
         self.gguf_writer.add_nextn_predict_layers(self.hparams.get("num_nextn_predict_layers", 0))
+
+        # Clamped SwiGLU, applied to the routed experts of the last layers for training and
+        # inference stability. Per the K-EXAONE 2.0 technical report this is the gpt-oss /
+        # DeepSeek-V4 construction: the gate branch is bounded from above and the linear branch
+        # on both sides. The shared expert is left unclamped - the report only ever demonstrates
+        # the clamp over routed experts.
+        if (swiglu_limits := self.hparams.get("swiglu_limits")) is not None:
+            self.gguf_writer.add_swiglu_clamp_exp([float(limit) for limit in swiglu_limits])
 
         self.gguf_writer.add_rope_scaling_type(gguf.RopeScalingType.NONE)
 

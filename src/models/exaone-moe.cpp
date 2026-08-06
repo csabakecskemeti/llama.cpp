@@ -1,11 +1,24 @@
 #include "models.h"
 
 void llama_model_exaone_moe::load_arch_hparams(llama_model_loader & ml) {
+    // must be read first: n_layer() is n_layer_all - n_layer_nextn, and the per-layer arrays
+    // below are sized by it (the NextN/MTP layer is not covered by them)
+    ml.get_key(LLM_KV_NEXTN_PREDICT_LAYERS, hparams.n_layer_nextn, false);
+    GGML_ASSERT(hparams.n_layer_nextn < hparams.n_layer_all && "n_layer_nextn must be < n_layer_impl");
+
     hparams.swa_type = LLAMA_SWA_TYPE_STANDARD;
     hparams.n_swa = 128;
+
+    // the pattern is either a scalar period (repeating LLL..G) or a per-layer bool array.
+    // K-EXAONE 2.0 needs the array form: its two leading dense layers break the period, so the
+    // global layers sit at 0, 5, 9, ... instead of 3, 7, 11, ...
     uint32_t swa_period = 4;
-    ml.get_key_or_arr(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, swa_period, false);
-    hparams.set_swa_pattern(swa_period);
+    if (ml.get_key_or_arr(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, swa_period, false)) {
+        hparams.set_swa_pattern(swa_period);
+    } else if (!ml.get_key_or_arr(LLM_KV_ATTENTION_SLIDING_WINDOW_PATTERN, hparams.is_swa_impl, hparams.n_layer(), false)) {
+        hparams.set_swa_pattern(swa_period);
+    }
+
     hparams.rope_freq_base_train_swa  = hparams.rope_freq_base_train;
     hparams.rope_freq_scale_train_swa = hparams.rope_freq_scale_train;
 
@@ -20,12 +33,14 @@ void llama_model_exaone_moe::load_arch_hparams(llama_model_loader & ml) {
     ml.get_key(LLM_KV_EXPERT_WEIGHTS_NORM,               hparams.expert_weights_norm, false);
     ml.get_key(LLM_KV_LEADING_DENSE_BLOCK_COUNT,         hparams.n_layer_dense_lead, false);
 
-    ml.get_key(LLM_KV_NEXTN_PREDICT_LAYERS, hparams.n_layer_nextn, false);
-    GGML_ASSERT(hparams.n_layer_nextn < hparams.n_layer_all && "n_layer_nextn must be < n_layer_impl");
+    // Clamped SwiGLU on the routed experts of the deepest layers (K-EXAONE 2.0, tau = 7.0)
+    ml.get_key_or_arr(LLM_KV_SWIGLU_CLAMP_EXP,   hparams.swiglu_clamp_exp,   hparams.n_layer(), false);
+    ml.get_key_or_arr(LLM_KV_SWIGLU_CLAMP_SHEXP, hparams.swiglu_clamp_shexp, hparams.n_layer(), false);
 
     switch (hparams.n_layer()) {
         case 32: type = LLM_TYPE_30B_A3B; break;
         case 48: type = LLM_TYPE_235B_A22B; break;
+        case 78: type = LLM_TYPE_750B_A37B; break;
         default: type = LLM_TYPE_UNKNOWN;
     }
 }
