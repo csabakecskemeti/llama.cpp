@@ -3197,10 +3197,14 @@ std::optional<common_chat_params> common_chat_try_specialized_template(
         return common_chat_params_init_minicpm5(tmpl, params);
     }
 
-    // Qwen3-Coder XML tool calls, also used by Nemotron Nano 3, Qwen3.5 and StepFun-3.5-Flash
+    // Qwen3-Coder XML tool calls, also used by Nemotron Nano 3, Qwen3.5 and StepFun-3.5-Flash.
+    // The Qwen3-Coder parser hardcodes ChatML turn markers, so it must not claim templates that
+    // merely document the same XML tool-call syntax while using markers of their own - EXAONE
+    // (K-EXAONE 2.0) does exactly that, and the generic analyser handles it correctly.
     if (src.find("<tool_call>") != std::string::npos &&
         src.find("<function=") != std::string::npos &&
-        src.find("<parameter=") != std::string::npos) {
+        src.find("<parameter=") != std::string::npos &&
+        src.find("<|im_start|>") != std::string::npos) {
         LOG_DBG("Using specialized template: Qwen3-Coder\n");
         return common_chat_params_init_qwen3_coder(tmpl, params);
     }
