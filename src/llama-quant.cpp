@@ -305,7 +305,9 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
 
     // do not quantize expert gating tensors
     // NOTE: can't use LLM_TN here because the layer number is not known
-    quantize &= name.find("ffn_gate_inp.weight") == std::string::npos;
+    quantize &= name.find("ffn_gate_inp.weight")    == std::string::npos;
+    // do not quantize integer hash routing tables (e.g. DeepSeek-V4)
+    quantize &= name.find("ffn_gate_tid2eid.weight") == std::string::npos;
 
     // do not quantize the i32 token-id -> expert-id routing table (DeepSeek-V4)
     quantize &= name.find("ffn_gate_tid2eid.weight") == std::string::npos;
