@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence, TYPE_CHECKING
+import re
+
+from typing import Callable, Iterable, Sequence, TYPE_CHECKING
 
 import torch
 
@@ -8,6 +10,7 @@ if TYPE_CHECKING:
     from torch import Tensor
 
 from .base import ModelBase, TextModel, MmprojModel, gguf, logger
+from .qwen import DSparkModel
 
 
 @ModelBase.register("MiniMaxText01ForCausalLM")
@@ -202,6 +205,47 @@ class MiniMaxM3Model(MiniMaxM2Model):
         if name.endswith("norm.weight"):
             data_torch = data_torch + 1.0
 
+        yield from super().modify_tensors(data_torch, name, bid)
+
+
+@ModelBase.register("DSparkMiniMaxDraftModel")
+@ModelBase.example("MiniMaxAI/MiniMax-M3.1-Flash")
+class MiniMaxM3DSparkModel(DSparkModel):
+    # dspark/ subfolder of the MiniMax-M3 release: dense DFlash backbone, (1 + w) RMSNorm, swigluoai FFN, all-SWA layers
+    model_arch = gguf.MODEL_ARCH.DFLASH
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        hp = self.hparams
+        if not hp.get("dspark_use_dense_ffn", False) or any(hp.get("moe_layer_freq", [])):
+            raise ValueError("MiniMax-M3 DSpark currently requires a dense FFN draft")
+        if hp.get("hidden_act") != "swigluoai" or hp.get("attention_output_gate", False):
+            raise ValueError("MiniMax-M3 DSpark requires hidden_act=swigluoai and no attention output gate")
+        hp["intermediate_size"] = hp["dspark_ffn_hidden_size"]
+        # the config copies the MoE target's expert keys, the draft itself is dense
+        for key in ("num_local_experts", "num_experts_per_tok", "scoring_func"):
+            hp.pop(key, None)
+        self.rope_parameters["partial_rotary_factor"] = hp["rotary_dim"] / hp["head_dim"]
+        if "sliding_attention" in hp.get("layer_types", []):
+            hp["use_sliding_window"] = True
+
+    def set_gguf_parameters(self):
+        super().set_gguf_parameters()
+        self.gguf_writer.add_hidden_act("swigluoai")
+
+    @classmethod
+    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
+        name, gen = item
+        name = name.removeprefix("language_model.model.dspark.")
+        name = re.sub(r"^layers\.(\d+)\.decoder_layer\.", r"layers.\1.", name)
+        if name == "final_norm.weight":
+            name = "norm.weight"
+        return super().filter_tensors((name, gen))
+
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        # Gemma-style (1 + w) RMSNorm, same as the target
+        if name.endswith("norm.weight"):
+            data_torch = data_torch + 1.0
         yield from super().modify_tensors(data_torch, name, bid)
 
 

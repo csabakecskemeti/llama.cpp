@@ -299,8 +299,11 @@ llama_model_minimax_m3::graph::graph(const llama_model & model, const llm_graph_
     }
 
     ggml_tensor * inp_out_ids = build_inp_out_ids();
+    const bool extract_final_inp = (size_t) n_layer < cparams.embeddings_layer_inp.size() && cparams.embeddings_layer_inp[n_layer];
 
     for (int il = 0; il < n_layer; ++il) {
+        res->t_layer_inp[il] = inpL;
+
         ggml_tensor * inpSA = inpL;
 
         // self-attention
@@ -536,7 +539,7 @@ llama_model_minimax_m3::graph::graph(const llama_model & model, const llm_graph_
             }
         }
 
-        if (il == n_layer - 1 && inp_out_ids) {
+        if (il == n_layer - 1 && inp_out_ids && !extract_final_inp) {
             cur   = ggml_get_rows(ctx0,   cur, inp_out_ids);
             inpSA = ggml_get_rows(ctx0, inpSA, inp_out_ids);
         }
@@ -597,6 +600,13 @@ llama_model_minimax_m3::graph::graph(const llama_model & model, const llm_graph_
     }
 
     cur = inpL;
+    if (extract_final_inp) {
+        res->t_layer_inp[n_layer] = cur;
+
+        if (inp_out_ids) {
+            cur = ggml_get_rows(ctx0, cur, inp_out_ids);
+        }
+    }
 
     cur = build_norm(cur, model.output_norm, NULL, LLM_NORM_RMS, -1);
     cb(cur, "result_norm", -1);
