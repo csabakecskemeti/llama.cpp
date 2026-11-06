@@ -343,3 +343,43 @@ class KimiK3Model(TextModel):
             return
 
         yield from super().modify_tensors(data_torch, name, bid)
+
+
+@ModelBase.register("KimiK31ForConditionalGeneration")
+@ModelBase.example("moonshotai/Kimi-K3.1-Pro")
+class KimiK31Model(KimiK3Model):
+    """
+    Kimi-K3.1 text model: Kimi-K3 with the full-attention MLA layers replaced by
+    Gated DSA, i.e. the same MLA weights plus a DeepSeek-style lightning indexer
+    (`self_attn.indexer.{wq_b,wk,weights_proj,k_norm}`).
+
+    The indexer differs from DeepSeek-V3.2's: no RoPE (index_rope_dim == 0, the
+    MLA is nope-only), no Hadamard rotation, and a LayerNorm (with bias) on the key.
+    Reference: vLLM `vllm/models/kimi_k3/nvidia/dsa.py`.
+    """
+
+    model_arch = gguf.MODEL_ARCH.KIMI_K31
+
+    def set_gguf_parameters(self):
+        super().set_gguf_parameters()
+
+        dsa = self.hparams["dsa_config"]
+
+        # the llama.cpp port implements exactly the variant the released checkpoint uses
+        if dsa.get("index_rope_dim", 0) != 0:
+            raise NotImplementedError(f"DSA indexer RoPE is not supported (index_rope_dim={dsa['index_rope_dim']})")
+        if dsa.get("index_k_norm_type", "rmsnorm") != "layernorm":
+            raise NotImplementedError(f"unsupported index_k_norm_type {dsa.get('index_k_norm_type')!r}")
+        # index_topk_freq > 1 would share one top-k across layers, K3.1 has none of it;
+        # with freq == 1 index_skip_topk_offset has no effect
+        if dsa.get("index_topk_freq", 1) not in (None, 1):
+            raise NotImplementedError(f"index_topk_freq={dsa['index_topk_freq']} (index sharing) is not supported")
+
+        # every full-attention layer is a DSA layer (both lists are 1-indexed)
+        full_attn_layers = self.hparams["linear_attn_config"]["full_attn_layers"]
+        if sorted(dsa["dsa_layers"]) != sorted(full_attn_layers):
+            raise NotImplementedError("dsa_layers must equal linear_attn_config.full_attn_layers")
+
+        self.gguf_writer.add_indexer_head_count(dsa["index_num_heads"])
+        self.gguf_writer.add_indexer_key_length(dsa["index_head_dim"])
+        self.gguf_writer.add_indexer_top_k(dsa["index_topk"])

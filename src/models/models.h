@@ -3036,6 +3036,15 @@ struct llama_model_kimi_k3 : public llama_model_base {
     std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
 };
 
+// Kimi-K3.1: Kimi-K3 plus a DSA lightning indexer on the full-attention (MLA) layers
+struct llama_model_kimi_k31 : public llama_model_kimi_k3 {
+    llama_model_kimi_k31(const struct llama_model_params & params) : llama_model_kimi_k3(params) {}
+    void load_arch_hparams(llama_model_loader & ml) override;
+    void load_arch_tensors(llama_model_loader & ml) override;
+
+    std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+};
+
 struct llama_model_glm5_next : public llama_model_base {
     llama_model_glm5_next(const struct llama_model_params & params) : llama_model_base(params) {}
     void load_arch_hparams(llama_model_loader & ml) override;

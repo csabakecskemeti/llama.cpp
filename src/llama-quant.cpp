@@ -361,6 +361,14 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
     quantize &= name.find("indexer.k_proj.weight") == std::string::npos;
     quantize &= name.find("indexer.q_proj.weight") == std::string::npos;
 
+    // kimi-k31: the DSA indexer picks which tokens attention sees, so a coarse quant breaks it silently.
+    // it is small (~7.4M params per DSA layer), and while the graph runs dense imatrix collects nothing for it
+    if (arch == LLM_ARCH_KIMI_K31) {
+        quantize &= name.find("indexer.attn_q_b") == std::string::npos;
+        quantize &= name.find("indexer.attn_k")   == std::string::npos;
+        quantize &= name.find("indexer.proj")     == std::string::npos;
+    }
+
     // metis16: small control tensors that steer every layer; the stream and hc_ tables (ne[0] = 4) would fall back to F16
     if (arch == LLM_ARCH_METIS16) {
         quantize &= name.rfind("depth_mem_", 0) == std::string::npos;
