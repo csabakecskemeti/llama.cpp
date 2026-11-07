@@ -598,6 +598,7 @@ struct mtmd_context {
     // these are not token, but strings used to mark the beginning and end of image/audio embeddings
     std::string img_beg;
     std::string img_end;
+    bool img_beg_has_size = false; // img_beg is a printf format taking the original image width and height
     std::string aud_beg;
     std::string aud_end;
     std::string vid_beg; // wraps a whole video (lazy bitmap with is_video)
@@ -967,6 +968,15 @@ struct mtmd_context {
                         img_beg = "<|media_begin|>";
                         img_end = "<|media_end|>";
                     }
+                    image_preproc = std::make_unique<mtmd_image_preprocessor_dyn_size>(ctx_v);
+                } break;
+            case PROJECTOR_TYPE_KIMIK3:
+                {
+                    // <|media_begin|>image WxH<|media_content|> ... (image embeddings) ... <|media_end|>
+                    // W and H are the ORIGINAL upload size, not the resized one (vLLM kimi_k3 mm_preprocess.py)
+                    img_beg = "<|media_begin|>image %dx%d<|media_content|>";
+                    img_end = "<|media_end|>";
+                    img_beg_has_size = true;
                     image_preproc = std::make_unique<mtmd_image_preprocessor_dyn_size>(ctx_v);
                 } break;
             case PROJECTOR_TYPE_LIGHTONOCR:
@@ -1590,7 +1600,9 @@ struct mtmd_tokenizer {
                 return 2;
             }
 
-            if (!ctx->img_beg.empty()) {
+            if (ctx->img_beg_has_size) {
+                add_text(string_format(ctx->img_beg.c_str(), (int) bitmaps[0]->nx, (int) bitmaps[0]->ny), true);
+            } else if (!ctx->img_beg.empty()) {
                 add_text(ctx->img_beg, true); // add image begin token
             }
 

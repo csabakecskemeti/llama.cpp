@@ -3401,10 +3401,10 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
     # Step3-VL keeps text config under text_config but uses a custom top-level architecture.
     # For text conversion we route to a dedicated text-only class.
     # TODO: refactor this later to avoid adding exception here
-    # Kimi-K3's text_config reports "KimiLinearForCausalLM", which is the older
+    # Kimi-K3/K3.1's text_config reports "KimiLinearForCausalLM", which is the older
     # Kimi-Linear-48B architecture and cannot load K3 (no attention residuals,
     # latent MoE, situ, ...). Route on the top-level architecture instead.
-    if model_type == ModelType.TEXT and arch in ("NEOChatModel", "StepVLForConditionalGeneration", "Sarashina2VisionForCausalLM", "Exaone4_5_ForConditionalGeneration", "Step3p7ForConditionalGeneration", "KimiK3ForConditionalGeneration", "Nemotron3_5TranscribeForConditionalGeneration"):
+    if model_type == ModelType.TEXT and arch in ("NEOChatModel", "StepVLForConditionalGeneration", "Sarashina2VisionForCausalLM", "Exaone4_5_ForConditionalGeneration", "Step3p7ForConditionalGeneration", "KimiK3ForConditionalGeneration", "KimiK31ForConditionalGeneration", "Nemotron3_5TranscribeForConditionalGeneration"):
         return arch
 
     # if "architectures" is found in the sub-config, use that instead
