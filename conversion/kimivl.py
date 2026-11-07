@@ -57,6 +57,8 @@ class KimiVLModel(MmprojModel):
 class KimiK25Model(MmprojModel):
     """Kimi-K2.5 with MoonViT3d vision encoder"""
 
+    projector_type = gguf.VisionProjectorType.KIMIK25
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -78,7 +80,7 @@ class KimiK25Model(MmprojModel):
         super().set_gguf_parameters()
         assert self.hparams_vision is not None
 
-        self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.KIMIK25)
+        self.gguf_writer.add_clip_projector_type(self.projector_type)
 
         # Position embedding parameters (for interpolation)
         self.gguf_writer.add_uint32("vision.pos_emb_height", self.hparams_vision.get("init_pos_emb_height", 64))
@@ -87,7 +89,7 @@ class KimiK25Model(MmprojModel):
 
         # Projector parameters
         self.gguf_writer.add_vision_use_gelu(self.hparams_vision.get("projector_hidden_act", "gelu") == "gelu")
-        self.gguf_writer.add_vision_attention_layernorm_eps(self.hparams_vision.get("projector_ln_eps", 1e-5))
+        self.gguf_writer.add_vision_attention_layernorm_eps(self.vit_norm_eps())
         self.gguf_writer.add_vision_projector_scale_factor(self.merge_kernel_size[0])
 
         # Image size limits
@@ -97,6 +99,10 @@ class KimiK25Model(MmprojModel):
         pixels_per_patch = self.patch_size ** 2
         self.gguf_writer.add_vision_min_pixels(min_patches * pixels_per_patch)
         self.gguf_writer.add_vision_max_pixels(in_patch_limit * pixels_per_patch)
+
+    def vit_norm_eps(self) -> float:
+        assert self.hparams_vision is not None
+        return self.hparams_vision.get("projector_ln_eps", 1e-5)
 
     @staticmethod
     def permute(weights: Tensor, n_head: int) -> Tensor:
@@ -154,6 +160,50 @@ class KimiK25Model(MmprojModel):
             name = name.replace(".proj.2.", ".proj.linear_2.")
 
         yield from super().modify_tensors(data_torch, name, bid)
+
+
+@ModelBase.register("KimiK3ForConditionalGeneration", "KimiK31ForConditionalGeneration")
+@ModelBase.example("moonshotai/Kimi-K3")
+class KimiK3VisionModel(KimiK25Model):
+    """Kimi-K3 / K3.1 MoonViT3d encoder with the PatchMergerMLPV2 projector
+
+    Same encoder code as Kimi-K2.5 (vLLM kimi_k25_vit.py), with K3's config flags:
+    RMSNorm instead of LayerNorm, no biases anywhere, a qkv width (1536) wider than
+    the hidden size (1024), bilinear position embedding interpolation, and a
+    projector with no pre-norm and an RMSNorm after linear_2.
+    """
+
+    projector_type = gguf.VisionProjectorType.KIMIK3
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        assert self.hparams_vision is not None
+        hv = self.hparams_vision
+
+        # K3 names these vt_*; modify_tensors reads num_attention_heads
+        hv.setdefault("num_attention_heads", hv["vt_num_attention_heads"])
+
+        expected = {
+            "norm_type": "rmsnorm", "mlp_type": "mlp2", "merge_type": "sd2_tpool",
+            "mm_projector_type": "patchmergerv2", "pos_emb_type": "divided_fixed",
+            "pos_emb_interpolation_mode": "bilinear", "activation_func": "gelu_pytorch_tanh",
+            "projector_hidden_act": "gelu", "projector_ln_eps": 1e-5,
+            "attn_bias": False, "linear_bias": False, "patch_embed_proj_bias": False,
+        }
+        for key, value in expected.items():
+            if hv.get(key) != value:
+                raise NotImplementedError(f"Kimi-K3 vision: unsupported {key}={hv.get(key)!r}, expected {value!r}")
+
+    def vit_norm_eps(self) -> float:
+        # the encoder norms are nn.RMSNorm(hidden) with eps=None, which torch resolves to
+        # finfo(input.dtype).eps at run time. the tower runs in bf16, so that is 2^-7
+        return float(torch.finfo(torch.bfloat16).eps)
+
+    def set_gguf_parameters(self):
+        super().set_gguf_parameters()
+        assert self.hparams_vision is not None
+        n_head = self.hparams_vision["vt_num_attention_heads"]
+        self.gguf_writer.add_vision_head_dim(self.hparams_vision["qkv_hidden_size"] // n_head)
 
 
 @ModelBase.register("Glm5vForConditionalGeneration")

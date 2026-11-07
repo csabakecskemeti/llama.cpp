@@ -368,6 +368,8 @@ MMPROJ_MODEL_MAP: dict[str, str] = {
     "InternVisionModel": "internvl",
     "JanusForConditionalGeneration": "januspro",
     "KimiK25ForConditionalGeneration": "kimivl",
+    "KimiK3ForConditionalGeneration": "kimivl",
+    "KimiK31ForConditionalGeneration": "kimivl",
     "KimiVLForConditionalGeneration": "kimivl",
     "Lfm2AudioForConditionalGeneration": "lfm2",
     "D1OmniModel": "lfm2",
